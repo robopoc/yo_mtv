@@ -59,7 +59,8 @@ class MultipleProductsSuite extends Properties("Multi Product Support") {
   implicit lazy val arbDS: Arbitrary[Dataset[RetailState]] = Arbitrary(rsDSGen)
 
   property("multi prod cont time") = forAll { (ds1: Dataset[RetailState], ds2: Dataset[RetailState]) =>
-    MultipleProducts()
+    val prodMap : Map[Product,Dataset[RetailState]] = Map(FDAX() -> ds1, FSTX() -> ds2)
+    new MultipleProducts().combine_products(prodMap)
   }
 }
 

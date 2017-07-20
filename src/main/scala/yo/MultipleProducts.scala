@@ -7,7 +7,7 @@ import java.security.InvalidParameterException
 import org.apache.spark.sql.{Dataset, SparkSession}
 
 
-class MultipleProducts {
+class MultipleProducts() {
   val sparkSession = SparkSession.builder.appName("multi product test suite").master("local[*]").getOrCreate()
   import sparkSession.implicits._
 

@@ -7,6 +7,7 @@ import java.time.ZonedDateTime
   */
   class Product
   case class FDAX() extends Product
+  case class FSTX() extends Product
   class BidAsk
   case class Bid() extends BidAsk
   case class Ask() extends BidAsk
