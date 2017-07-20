@@ -8,6 +8,10 @@ import org.apache.spark.sql.{Dataset, SparkSession}
 
 
 class MultipleProducts() {
+
+  type RetailStateDataSet = Dataset[RetailState]
+  type SnapDataSet = Dataset[Snapshot]
+
   val sparkSession = SparkSession.builder.appName("multi product test suite").master("local[*]").getOrCreate()
   import sparkSession.implicits._
 
