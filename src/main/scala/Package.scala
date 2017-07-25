@@ -18,6 +18,9 @@ package object yo {
   implicit val eurexSnapshotEncoder: Encoder[EurexSnapshot] = Encoders.kryo[EurexSnapshot]
   implicit def esEncoder: Encoder[EurexSnaps] = Encoders.kryo[EurexSnaps]
 
+  implicit val multiSnapshotEncoder: Encoder[MultiSnapshot] = Encoders.kryo[MultiSnapshot]
+  implicit val msEncoder: Encoder[MultiSnaps] = Encoders.kryo[MultiSnaps]
+
 
   val sparkSession = SparkSession.builder.appName("yo").master("local[*]").getOrCreate()
   val MY_EPOCH = ZonedDateTime.of(2017,7,1,0,0,0,100, ZoneId.systemDefault())

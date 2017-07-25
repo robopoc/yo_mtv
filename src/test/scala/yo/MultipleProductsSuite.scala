@@ -16,7 +16,6 @@ import org.scalacheck.Arbitrary._
 import org.scalacheck.Prop._
 import org.scalacheck.Test.Parameters
 import org.scalatest.{Matchers, PropSpec}
-import org.apache.spark.sql.{Encoder,Encoders}
 import yo.sparkSession.implicits._
 
 final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matchers {
@@ -79,6 +78,12 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
   lazy val rsListGen : Gen[List[EurexSnapshot]] = listOf[EurexSnapshot](rsGen)
   implicit lazy val arbRsList: Arbitrary[List[EurexSnapshot]] = Arbitrary(rsListGen)
 
+  property("snapshot generator") {
+    forAll{ (es: List[EurexSnapshot]) =>
+      es should not be empty
+    }
+  }
+
   lazy val rsDSGen : Gen[EurexSnaps] = {
     for {
       rsList : List[EurexSnapshot] <- rsListGen
@@ -86,17 +91,27 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
   }
   implicit lazy val arbDS: Arbitrary[EurexSnaps] = Arbitrary(rsDSGen)
 
-
+  property("snaps generator") {
+    forAll {
+      (es : EurexSnaps) => {
+        es.count() > 0
+        println(es.columns)
+        es.columns should contain ("received")
+      }
+    }
+  }
 
   property("multi prod cont time") {
     def latest_snap = (l : Iterable[Snapshot]) => l.reduce((z1,z2) => if (z1.received.isAfter(z2.received)) z1 else z2)
     forAll {
       (ds1: EurexSnaps, ds2: EurexSnaps) => {
+        if (ds1.count() > 0 && ds2.count > 0) {
         val prodMap: Map[Product, EurexSnaps] = Map(FDAX() -> ds1, FSTX() -> ds2)
         val ms = new MultipleProducts().combine_products(prodMap)
         //ms("received") should be (sorted[ZonedDateTime])
         // ms("received") should equal (ms.map(m => last_snap(m.productMap.values).received))
         ms.filter(m => m.received != latest_snap(m.productMap.values).received).collect() shouldBe empty
+      }
       }
     }
   }
