@@ -22,3 +22,11 @@ libraryDependencies += "org.scalacheck" %% "scalacheck" % "1.13.4" % "test"
 libraryDependencies += "org.scalactic" %% "scalactic" % "3.0.1"
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.1" % "test"
 
+// https://mvnrepository.com/artifact/com.databricks/spark-avro_2.11
+libraryDependencies += "com.databricks" %% "spark-avro" % "3.2.0"
+
+// https://mvnrepository.com/artifact/com.google.cloud.bigdataoss/gcs-connector
+libraryDependencies += "com.google.cloud.bigdataoss" % "gcs-connector" % "1.6.1-hadoop2"
+
+
+

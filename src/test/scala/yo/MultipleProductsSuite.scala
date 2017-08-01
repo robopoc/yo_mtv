@@ -22,6 +22,10 @@ import org.scalacheck.Test.Parameters
 import org.scalatest.{Matchers, PropSpec}
 import yo.sparkSession.implicits._
 import yo.MultiSnapsFunctions._
+import com.databricks.spark.avro._
+import com.google.cloud.hadoop.fs.gcs._
+import com.google.cloud.hadoop.util._
+
 //import yo.SnapsFunctions._
 
 final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matchers {
@@ -58,7 +62,7 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
       dev : Long <- Gen.choose[Long](-1L,1L)
     } yield {
       midTick = Math.max(midTick + dev, 10000L - 1000L)
-      EurexSnapshot(received,
+      EurexSnapshot(received.getTime * 1000000L + received.getNanos,
         Side[Bid](Vector(PriceVolume(midTick - 1L,10L)),Vector()),
         Side[Ask](Vector(PriceVolume(midTick + 1L,10L)),Vector()))
     }
@@ -112,15 +116,55 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
  // implicit val enc: Encoder[Map[String, yo.Snapshot]] = ExpressionEncoder()
 
 
-  property("x y z") {
+  property("test multisnaps add product") {
+    var prev_ts =
     forAll {
       (ds1: Snaps, ds2: Snaps) => {
-          val init = sparkSession.emptyDataset[MultiSnapshot]
-          val ms = List(("FDAX", ds1),("FESX", ds2)).foldLeft[MultiSnaps](init)(_ addProduct _)
+        val init = sparkSession.emptyDataset[MultiSnapshot]
+        val ms = createMultiSnaps(List(("FDAX", ds1),("FESX", ds2)))
 
-          ms.filter(m => m.received != m.latest().received).collect() shouldBe empty
-          //ms.filter(m => m.received == new Timestamp(0L)).collect() shouldBe empty
+        ms.filter(m => m.received != m.latest().received).collect() shouldBe empty
 
+        def bef(tb: ((Long,Boolean),(Long,Boolean))) = {
+          (tb._2._1,(tb._2._1 > tb._1._1) && tb._1._2)
+        }
+        ms.map(m => (m.received, true)).reduce(bef(_,_))._2 should equal (true)
+      }
+    }
+  }
+
+  property("test avro file") {
+    val df = sparkSession.read.avro("/Users/robo/data/avro_test.avro")
+    //val df2 = sparkSession.read.avro("gs://Buckets/viv-speed/avro_test_files")
+
+    val ds = df.as[Avros]
+    ds.show()
+
+
+    val fdf = ds.filter(av => av.feedcode.contains("FUT_NK225_"))
+    fdf.show()
+    val ffdf = fdf.filter(av => av.tick != null)
+    ffdf.show()
+
+    val oink = ffdf.select("tick.Source").distinct().collect()
+  }
+
+  lazy val msGen : Gen[MultiSnaps] = {
+    for {
+      snapsList : List[Snaps] <- Gen.listOf[Snaps](rsDSGen)
+    } yield createMultiSnaps(snapsList.map(s => ("p", s)))
+  }
+  implicit lazy val arbMS: Arbitrary[MultiSnaps] = Arbitrary(msGen)
+
+  property("test multisnaps fill") {
+    forAll {
+      (ms: MultiSnaps) => {
+        val ms_filled = ms.fill()
+
+        ms_filled should have size ms.count()
+        val prod_sizes = ms_filled.map(m => m.products.size).cache()
+        prod_sizes.distinct().count() should equal (1)
+        prod_sizes.filter(f => f != ms_filled.products.size).collect shouldBe empty
       }
     }
   }

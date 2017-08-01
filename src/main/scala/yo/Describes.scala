@@ -26,7 +26,7 @@ case class Side[S <: BidAsk](quotes: Vector[PriceVolume], trades: Vector[PriceVo
 }
 
 abstract class Snapshot {
-  def received: Timestamp
+  def received: Long
   def bids: Side[Bid]
   def asks: Side[Ask]
   def side(bidAsk: BidAsk) = bidAsk match {
@@ -34,21 +34,55 @@ abstract class Snapshot {
     case Ask() => asks
   }
   def midPrice(): Option[Double] = for (x <- side(Ask()).qp(); y <- side(Bid()).qp()) yield (x+y)*0.5
+
+  def fill(other: Option[EurexSnapshot]): Option[EurexSnapshot]
 }
 
-case class EurexSnapshot(received: java.sql.Timestamp, bids: Side[Bid], asks: Side[Ask]) extends Snapshot
 
-case class MultiSnapshot(received: java.sql.Timestamp, products: Vector[(String,Option[EurexSnapshot])]) extends Serializable {
+
+case class EurexSnapshot(received: Long, bids: Side[Bid], asks: Side[Ask]) extends Snapshot {
+  override def fill(other: Option[EurexSnapshot]) = other match {
+    case None => Some(this.copy())
+    case Some(s) => Some(EurexSnapshot(s.received,
+      Side[Bid](bids.qp() match {
+        case None => s.bids.quotes
+        case _ => bids.quotes
+      },
+        s.bids.trades),
+      Side[Ask](asks.qp() match {
+        case None => asks.quotes
+        case _ => s.asks.quotes
+      },
+        s.asks.trades)))
+  }
+}
+
+case class MultiSnapshot(received: Long,
+                         products: Vector[(String,Option[EurexSnapshot])]) extends Serializable {
   def latest(): EurexSnapshot = products match {
     case last +: nil => last._2.get
     case Vector() => products.reduce((z1,z2) => (z1._2,z2._2) match {
       case (_,None) => z1
       case (None,Some(s)) => z2
-      case (Some(s1),Some(s2)) => if (s1.received.after(s2.received)) z1 else z2
+      case (Some(s1),Some(s2)) => if (s1.received > s2.received) z1 else z2
     })._2.get
     case _ => throw new NoSuchElementException("at least one event per row " + received)
   }
+
+  def fill(other: MultiSnapshot) = {
+    val sss : Vector[(String,Option[EurexSnapshot])] = for {
+      s <- other.products.zip(products)
+      ss = s._2._2 match {
+        case None => s._1._2
+        case Some(es) => es.fill(s._1._2)
+      }
+    } yield (s._1._1,ss)
+    MultiSnapshot(received, sss)
+  }
 }
+
+case class PVS(price: Double, volume: Double, Source: String)
+case class Avros(ts: Long, feedcode: String, bid: Vector[(Long,Double)], ask: Vector[(Long,Double)], tick: PVS)
 
 //object Encooders {
 //  implicit def dd: Encoder[Prod] = Encoders.kryo[Prod]
