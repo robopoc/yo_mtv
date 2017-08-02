@@ -117,7 +117,7 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
 
 
   property("test multisnaps add product") {
-    var prev_ts =
+    var prev_ts = 0L
     forAll {
       (ds1: Snaps, ds2: Snaps) => {
         val init = sparkSession.emptyDataset[MultiSnapshot]
@@ -133,15 +133,12 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
     }
   }
 
-  property("test avro file") {
-    val df = sparkSession.read.avro("/Users/robo/data/avro_test.avro")
-    //val df2 = sparkSession.read.avro("gs://Buckets/viv-speed/avro_test_files")
+  property("test avro file conversion") {
+    val ds = sparkSession.read.avro("/Users/robo/data/avro_test.avro").as[Avros]
 
-    val ds = df.as[Avros]
-    ds.show()
+    ds.map(r => Math.max(r.bid.length,r.ask.length)).reduce(Math.max(_,_))
 
 
-    val fdf = ds.filter(av => av.feedcode.contains("FUT_NK225_"))
     fdf.show()
     val ffdf = fdf.filter(av => av.tick != null)
     ffdf.show()
@@ -152,7 +149,7 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
   lazy val msGen : Gen[MultiSnaps] = {
     for {
       snapsList : List[Snaps] <- Gen.listOf[Snaps](rsDSGen)
-    } yield createMultiSnaps(snapsList.map(s => ("p", s)))
+    } yield createMultiSnaps(snapsList.zipWithIndex.map(s => ("p" + s._2, s._1)))
   }
   implicit lazy val arbMS: Arbitrary[MultiSnaps] = Arbitrary(msGen)
 
@@ -161,10 +158,12 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
       (ms: MultiSnaps) => {
         val ms_filled = ms.fill()
 
-        ms_filled should have size ms.count()
+        ms_filled.count() shouldBe (ms.count())
         val prod_sizes = ms_filled.map(m => m.products.size).cache()
         prod_sizes.distinct().count() should equal (1)
         prod_sizes.filter(f => f != ms_filled.products.size).collect shouldBe empty
+
+        ms.isTradedProduct(ms.products.head._1)
       }
     }
   }

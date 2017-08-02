@@ -38,8 +38,6 @@ abstract class Snapshot {
   def fill(other: Option[EurexSnapshot]): Option[EurexSnapshot]
 }
 
-
-
 case class EurexSnapshot(received: Long, bids: Side[Bid], asks: Side[Ask]) extends Snapshot {
   override def fill(other: Option[EurexSnapshot]) = other match {
     case None => Some(this.copy())
