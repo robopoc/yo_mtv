@@ -35,24 +35,28 @@ class MultiSnapsFunctions[S <: EurexSnapshot](private val ds: Dataset[MultiSnaps
     case (0) => ds
     case _ => {
       products + ((ps._1,products.size))
-      products.size match {
+      val new_ds = products.size match {
         case (1) => {
-          ps._2.map(s => MultiSnapshot(s.received, Vector((ps._1, Some(s)))))
+          ps._2.map(s => MultiSnapshot(s.received, s.ssd, Vector((ps._1, Some(s)))))
         }
         case (l) => {
           val merged: Dataset[(MultiSnapshot, EurexSnapshot)] =
             ds.joinWith(ps._2, ds("received") === ps._2("received"), "outer")
           merged.map(m => m._1 match {
-            case null => MultiSnapshot(m._2.received, generate_snapshot_vector(products.dropRight(1).keys) :+ ((ps._1, Some(m._2))))
-            case _ => MultiSnapshot(m._1.received, m._1.products :+ ((ps._1, Some(m._2))))
+            case null => MultiSnapshot(m._2.received, m._2.ssd, generate_snapshot_vector(products.dropRight(1).keys) :+ ((ps._1, Some(m._2))))
+            case _ => MultiSnapshot(m._1.received, m._1.ssd, m._1.products :+ ((ps._1, Some(m._2))))
           })
         }
       }
+      new_ds.repartition(new_ds.groupBy(new_ds("ssd")).count().count().toInt,new_ds("ssd"))
     }
   }
 
   def fill(): MultiSnaps = {
-    ds.scanPartition[MultiSnapshot](MultiSnapshot(0L, generate_snapshot_vector(products.keys)), _ fill _)
+    def ff(ii: Iterator[MultiSnapshot]): Iterator[MultiSnapshot] = {
+      ii.scanLeft[MultiSnapshot](MultiSnapshot(0L, 0, generate_snapshot_vector(products.keys)))(_ fill _).filter(r => r.received != 0L)
+    }
+    ds.mapPartitions(ff)
   }
 
   def isTradedProduct(product: String): Unit = {
@@ -68,8 +72,9 @@ class MultiSnapsFunctions[S <: EurexSnapshot](private val ds: Dataset[MultiSnaps
 object MultiSnapsFunctions {
   implicit def addFunctions[S <: EurexSnapshot](ds: Dataset[MultiSnapshot]) = new MultiSnapsFunctions[S](ds)
 
-  def createMultiSnaps(products: List[(String, Snaps)]) = {
-    val ms = products.foldLeft[MultiSnaps](sparkSession.emptyDataset[MultiSnapshot])(_ addProduct _)
-    ms.fill()
+  def createMultiSnaps(products: List[(String, Snaps)]) = products match {
+    case null => sparkSession.emptyDataset[MultiSnapshot]
+    case Nil => sparkSession.emptyDataset[MultiSnapshot]
+    case _ => products.foldLeft[MultiSnaps](sparkSession.emptyDataset[MultiSnapshot])(_ addProduct _)
   }
 }

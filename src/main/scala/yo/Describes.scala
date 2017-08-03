@@ -27,6 +27,7 @@ case class Side[S <: BidAsk](quotes: Vector[PriceVolume], trades: Vector[PriceVo
 
 abstract class Snapshot {
   def received: Long
+  def ssd: Int
   def bids: Side[Bid]
   def asks: Side[Ask]
   def side(bidAsk: BidAsk) = bidAsk match {
@@ -38,10 +39,11 @@ abstract class Snapshot {
   def fill(other: Option[EurexSnapshot]): Option[EurexSnapshot]
 }
 
-case class EurexSnapshot(received: Long, bids: Side[Bid], asks: Side[Ask]) extends Snapshot {
+case class EurexSnapshot(received: Long, ssd: Int, bids: Side[Bid], asks: Side[Ask]) extends Snapshot {
   override def fill(other: Option[EurexSnapshot]) = other match {
     case None => Some(this.copy())
     case Some(s) => Some(EurexSnapshot(s.received,
+      s.ssd,
       Side[Bid](bids.qp() match {
         case None => s.bids.quotes
         case _ => bids.quotes
@@ -55,7 +57,7 @@ case class EurexSnapshot(received: Long, bids: Side[Bid], asks: Side[Ask]) exten
   }
 }
 
-case class MultiSnapshot(received: Long,
+case class MultiSnapshot(received: Long, ssd: Int,
                          products: Vector[(String,Option[EurexSnapshot])]) extends Serializable {
   def latest(): EurexSnapshot = products match {
     case last +: nil => last._2.get
@@ -75,7 +77,7 @@ case class MultiSnapshot(received: Long,
         case Some(es) => es.fill(s._1._2)
       }
     } yield (s._1._1,ss)
-    MultiSnapshot(received, sss)
+    MultiSnapshot(received, ssd, sss)
   }
 }
 

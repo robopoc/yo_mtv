@@ -5,7 +5,7 @@ package yo
 
 
 import java.sql.Timestamp
-import java.time.{ZoneId, ZonedDateTime}
+import java.time.{LocalDateTime, ZoneId, ZoneOffset, ZonedDateTime}
 
 import org.apache.spark.ml.regression.LinearRegression
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
@@ -120,6 +120,9 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
     var prev_ts = 0L
     forAll {
       (ds1: Snaps, ds2: Snaps) => {
+
+        ds1.repartition(ds1("received"))
+
         val init = sparkSession.emptyDataset[MultiSnapshot]
         val ms = createMultiSnaps(List(("FDAX", ds1),("FESX", ds2)))
 
@@ -135,15 +138,22 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
 
   property("test avro file conversion") {
     val ds = sparkSession.read.avro("/Users/robo/data/avro_test.avro").as[Avros]
+    println(ds.rdd.getNumPartitions)
 
-    ds.map(r => Math.max(r.bid.length,r.ask.length)).reduce(Math.max(_,_))
+    //ds.map(av => LocalDateTime.ofEpochSecond(av.ts/1000000000, (av.ts % 1000000000).toInt, ZoneOffset.of("Z")))
+
+    ds.write.partitionBy("ts").avro("/Users/robo/data/part/")
+    println(ds.rdd.getNumPartitions)
 
 
-    fdf.show()
-    val ffdf = fdf.filter(av => av.tick != null)
-    ffdf.show()
+   // ds.map(r => Math.max(r.bid.length,r.ask.length)).reduce(Math.max(_,_))
 
-    val oink = ffdf.select("tick.Source").distinct().collect()
+
+//    fdf.show()
+//    val ffdf = fdf.filter(av => av.tick != null)
+//    ffdf.show()
+//
+//    val oink = ffdf.select("tick.Source").distinct().collect()
   }
 
   lazy val msGen : Gen[MultiSnaps] = {
@@ -156,14 +166,21 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
   property("test multisnaps fill") {
     forAll {
       (ms: MultiSnaps) => {
-        val ms_filled = ms.fill()
+        if (ms == null || ms.count() == 0) {
 
-        ms_filled.count() shouldBe (ms.count())
-        val prod_sizes = ms_filled.map(m => m.products.size).cache()
-        prod_sizes.distinct().count() should equal (1)
-        prod_sizes.filter(f => f != ms_filled.products.size).collect shouldBe empty
+          0 shouldBe (0)
+        }
+        else {
 
-        ms.isTradedProduct(ms.products.head._1)
+          val ms_filled = ms.fill()
+
+          ms_filled.count() shouldBe (ms.count())
+          val prod_sizes = ms_filled.map(m => m.products.size).cache()
+          prod_sizes.distinct().count() should equal(1)
+          prod_sizes.filter(f => f != ms_filled.products.size).collect shouldBe empty
+
+          ms.isTradedProduct(ms.products.head._1)
+        }
       }
     }
   }

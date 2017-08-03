@@ -10,13 +10,13 @@ import sparkSession.implicits._
 @InterfaceStability.Stable
 class DatasetFunctions[T](private val ds: Dataset[T]) extends Serializable {
 
-  def scanPartition[S](z: S, f: (S,T) => S): Dataset[S] = ???
-//    def scanner(i: Iterator[T]): Iterator[S] = {
+  def scanPartition[S](z: S, f: (S,T) => S): Dataset[S] = ??? //{
+//    import sparkSession.implicits._
+//    ds.mapPartitions(i => {
 //      val it = i.scanLeft(z)(f)
 //      it.next()
 //      it
-//    }
-//    ds.mapPartitions(scanner)
+//    })
 //  }
 }
 
