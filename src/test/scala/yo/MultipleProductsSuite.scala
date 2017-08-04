@@ -4,7 +4,9 @@
 package yo
 
 
-import java.sql.Timestamp
+import java.sql.{Date, Timestamp}
+import java.text.SimpleDateFormat
+import java.time.temporal.{ChronoField, TemporalField}
 import java.time.{LocalDateTime, ZoneId, ZoneOffset, ZonedDateTime}
 
 import org.apache.spark.ml.regression.LinearRegression
@@ -26,20 +28,30 @@ import com.databricks.spark.avro._
 import com.google.cloud.hadoop.fs.gcs._
 import com.google.cloud.hadoop.util._
 
-//import yo.SnapsFunctions._
 
 final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matchers {
 
   val MID_TICK = 10000L
   val MAX_DEV = 1000L
 
+  lazy val dayGen: Gen[Long] = {
+    var prev_day = -1L
+    for {
+      offset: Long <- Gen.choose(1L,10L)
+    } yield {
+      prev_day += offset
+      prev_day
+    }
+  }
+
   lazy val tsGen: Gen[Timestamp] = {
     var offset_nanos : Long = 0L
     for {
+      d: Long <- dayGen
       i: Long <- Gen.choose(1L,10000000L)
     } yield {
       offset_nanos = offset_nanos + i
-      Timestamp.valueOf(MY_EPOCH.plusNanos(offset_nanos).toLocalDateTime)
+      Timestamp.valueOf(MY_EPOCH.plusDays(d).plusNanos(offset_nanos).toLocalDateTime)
     }
   }
   implicit lazy val tsArb: Arbitrary[Timestamp] = Arbitrary(tsGen)
@@ -57,31 +69,37 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
 
   lazy val rsGen : Gen[EurexSnapshot] = {
     var midTick : Long = 10000L
+    val sdf = new SimpleDateFormat("yyyyMMdd")
+    def toDate(ts: Timestamp): Int = {
+      Integer.parseInt(sdf.format(new Date(ts.getTime)))
+    }
     for {
       received: Timestamp <- tsGen
       dev : Long <- Gen.choose[Long](-1L,1L)
     } yield {
       midTick = Math.max(midTick + dev, 10000L - 1000L)
       EurexSnapshot(received.getTime * 1000000L + received.getNanos,
+        toDate(received),
         Side[Bid](Vector(PriceVolume(midTick - 1L,10L)),Vector()),
         Side[Ask](Vector(PriceVolume(midTick + 1L,10L)),Vector()))
     }
   }
   implicit lazy val rsDt: Arbitrary[Snapshot] = Arbitrary(rsGen)
 
-//  property("snapshot generation") {
-//    forAll { (snap: Snapshot) =>
-//      snap.asks.quotes should have size 1
-//      snap.asks.trades shouldBe empty
-//
-//      snap.bids.quotes should have size 1
-//      snap.bids.trades shouldBe empty
-//
-//      snap.asks.quotes(0).tickPrice should be > snap.bids.quotes(0).tickPrice
-//
-//      snap.received.after(Timestamp.valueOf(MY_EPOCH.toLocalDateTime)) should equal (true)
-//    }
-//  }
+  property("snapshot generation") {
+    val ts = Timestamp.valueOf(MY_EPOCH.toLocalDateTime)
+      forAll { (snap: Snapshot) =>
+      snap.asks.quotes should have size 1
+      snap.asks.trades shouldBe empty
+
+      snap.bids.quotes should have size 1
+      snap.bids.trades shouldBe empty
+
+      snap.asks.quotes(0).tickPrice should be > snap.bids.quotes(0).tickPrice
+
+      snap.received should be > ts.getTime * 1000000L + ts.getNanos
+    }
+  }
 
   lazy val rsListGen : Gen[List[EurexSnapshot]] = listOf[EurexSnapshot](rsGen)
   implicit lazy val arbRsList: Arbitrary[List[EurexSnapshot]] = Arbitrary(rsListGen)
@@ -95,9 +113,33 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
   lazy val rsDSGen : Gen[Snaps] = {
     for {
       rsList : List[EurexSnapshot] <- rsListGen
-    } yield rsList.toDS()
+    } yield {
+      val ds = rsList.toDS()
+      rsList match {
+        case Nil => ds
+        case _ => ds.repartition(rsList.groupBy(es => es.ssd).size, ds("ssd"))
+      }
+    }
   }
   implicit lazy val arbDS: Arbitrary[Snaps] = Arbitrary(rsDSGen)
+
+  property("Snaps partitions") {
+    forAll {
+      (s: Snaps) => {
+        s.count() match {
+          case 0 => s.rdd.getNumPartitions shouldBe 1
+          case _ => s.rdd.getNumPartitions shouldBe (s.groupBy(s("ssd")).count().count())
+        }
+        // partitions need to obey ssd
+        s.foreachPartition(ite => {
+          val ssd = if (ite.hasNext) ite.next().ssd else 0
+          if (!ite.isEmpty && ite.forall(es => es.ssd == ssd)) {
+            throw new RuntimeException("yo")
+          }
+        })
+      }
+    }
+  }
 
 
 //
@@ -120,18 +162,21 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
     var prev_ts = 0L
     forAll {
       (ds1: Snaps, ds2: Snaps) => {
-
-        ds1.repartition(ds1("received"))
-
-        val init = sparkSession.emptyDataset[MultiSnapshot]
         val ms = createMultiSnaps(List(("FDAX", ds1),("FESX", ds2)))
 
-        ms.filter(m => m.received != m.latest().received).collect() shouldBe empty
+        ms.products should have size 2
+
+        val numDays = Math.max(1,ms.select("ssd").distinct().count())
+
+
+        ms.rdd.getNumPartitions shouldBe (numDays)
+
+        //ms.filter(m => m.received != m.latest().received).collect() shouldBe empty
 
         def bef(tb: ((Long,Boolean),(Long,Boolean))) = {
           (tb._2._1,(tb._2._1 > tb._1._1) && tb._1._2)
         }
-        ms.map(m => (m.received, true)).reduce(bef(_,_))._2 should equal (true)
+        //ms.map(m => (m.received, true)).reduce(bef(_,_))._2 should equal (true)
       }
     }
   }
@@ -167,14 +212,13 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
     forAll {
       (ms: MultiSnaps) => {
         if (ms == null || ms.count() == 0) {
-
           0 shouldBe (0)
         }
         else {
-
           val ms_filled = ms.fill()
 
           ms_filled.count() shouldBe (ms.count())
+          ms_filled.rdd.getNumPartitions shouldBe (ms.rdd.getNumPartitions)
           val prod_sizes = ms_filled.map(m => m.products.size).cache()
           prod_sizes.distinct().count() should equal(1)
           prod_sizes.filter(f => f != ms_filled.products.size).collect shouldBe empty

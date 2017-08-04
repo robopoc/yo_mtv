@@ -11,18 +11,17 @@ import org.apache.spark.annotation.InterfaceStability
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.{Dataset, Encoder, Encoders}
 import sparkSession.implicits._
-import DatasetFunctions._
+import MultiSnapsFunctions._
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
-@InterfaceStability.Stable
 class MultiSnapsFunctions[S <: EurexSnapshot](private val ds: Dataset[MultiSnapshot]) extends Serializable {
 
 //  implicit val dd: Encoder[Prod] = ExpressionEncoder()
 //  implicit val ss: Encoder[Snapshot] = ExpressionEncoder()
 
-  val products: mutable.LinkedHashMap[String,(Int,ZoneId)] = mutable.LinkedHashMap()
+  var products: mutable.LinkedHashMap[String,(Int,ZoneId)] = mutable.LinkedHashMap()
   val tradedProducts: ListBuffer[String] = ListBuffer()
   var timezone: Option[ZoneId] = None //ZoneId.of("Europe/Zurich")
 
@@ -34,29 +33,34 @@ class MultiSnapsFunctions[S <: EurexSnapshot](private val ds: Dataset[MultiSnaps
   def addProduct(ps: (String, Snaps)): MultiSnaps = ps._2.count() match {
     case (0) => ds
     case _ => {
-      products + ((ps._1,products.size))
+      products += ((ps._1,(products.size, ZoneId.of("Europe/Zurich"))))
       val new_ds = products.size match {
         case (1) => {
           ps._2.map(s => MultiSnapshot(s.received, s.ssd, Vector((ps._1, Some(s)))))
         }
         case (l) => {
-          val merged: Dataset[(MultiSnapshot, EurexSnapshot)] =
-            ds.joinWith(ps._2, ds("received") === ps._2("received"), "outer")
-          merged.map(m => m._1 match {
+          val merged: Dataset[(MultiSnapshot, EurexSnapshot)] = ds.joinWith(ps._2, ds("received") === ps._2("received"), "outer")
+          val merger: MultiSnaps = merged.map(m => m._1 match {
             case null => MultiSnapshot(m._2.received, m._2.ssd, generate_snapshot_vector(products.dropRight(1).keys) :+ ((ps._1, Some(m._2))))
             case _ => MultiSnapshot(m._1.received, m._1.ssd, m._1.products :+ ((ps._1, Some(m._2))))
           })
+          cops(merger)
         }
       }
-      new_ds.repartition(new_ds.groupBy(new_ds("ssd")).count().count().toInt,new_ds("ssd"))
+      //new_ds.repartition(new_ds.(new_ds("ssd")).count().count().toInt,new_ds("ssd"))
+      new_ds
     }
   }
 
+  def cops(other: MultiSnaps): Unit = {
+
+  }
+
   def fill(): MultiSnaps = {
-    def ff(ii: Iterator[MultiSnapshot]): Iterator[MultiSnapshot] = {
-      ii.scanLeft[MultiSnapshot](MultiSnapshot(0L, 0, generate_snapshot_vector(products.keys)))(_ fill _).filter(r => r.received != 0L)
+    def ff(prods: Iterable[String])(ii: Iterator[MultiSnapshot]): Iterator[MultiSnapshot] = {
+      ii.scanLeft[MultiSnapshot](MultiSnapshot(0L, 0, generate_snapshot_vector(prods)))(_ fill _).filter(r => r.received != 0L)
     }
-    ds.mapPartitions(ff)
+    ds.mapPartitions(ff(products.keys))
   }
 
   def isTradedProduct(product: String): Unit = {

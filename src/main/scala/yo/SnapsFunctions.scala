@@ -1,10 +1,11 @@
 package yo
 
 import java.security.InvalidParameterException
-import java.sql.Date
-import java.time.ZoneId
-import com.databricks.spark.avro._
+import java.sql.{Date, Timestamp}
+import java.time.temporal.ChronoField
+import java.time.{Instant, LocalDate, ZoneId}
 
+import com.databricks.spark.avro._
 import org.apache.spark.annotation.InterfaceStability
 import sparkSession.implicits._
 /**
@@ -18,15 +19,13 @@ class SnapsFunctions(private val ds: Snaps) extends Serializable {
 //  }
   var product: Option[(String, ZoneId)] = None
   def rep(): Unit = {
-    ds.repartition(new Date(ds("received/1000000")))
+    ds.repartition(ds("ssd"))
   }
 }
 
 //
 object SnapsFunctions {
   implicit def addFunctions(ds: Snaps) = new SnapsFunctions(ds)
-
-
 
   def fromAvro(product: (String,Map[Date,String]), days: Iterable[Date]): Snaps = {
     val ds = sparkSession.read.avro("/Users/robo/data/avro_test.avro").as[Avros]
@@ -54,10 +53,11 @@ object SnapsFunctions {
 
     ds_prod.map(av => {
       val tr = trades(av.tick, av.bid, av.ask)
+      val date = Instant.ofEpochMilli(av.ts/1000000L).get(ChronoField.EPOCH_DAY)
       tr match {
-        case Some((Bid(),s)) => EurexSnapshot(av.ts, Side[Bid](ttopv(av.bid), s), Side[Ask](ttopv(av.ask), Vector()))
-        case Some((Ask(),s)) => EurexSnapshot(av.ts, Side[Bid](ttopv(av.bid), Vector()), Side[Ask](ttopv(av.ask), s))
-        case _ => EurexSnapshot(av.ts, Side[Bid](ttopv(av.bid), Vector()), Side[Ask](ttopv(av.ask), Vector()))
+        case Some((Bid(),s)) => EurexSnapshot(av.ts, date, Side[Bid](ttopv(av.bid), s), Side[Ask](ttopv(av.ask), Vector()))
+        case Some((Ask(),s)) => EurexSnapshot(av.ts, date, Side[Bid](ttopv(av.bid), Vector()), Side[Ask](ttopv(av.ask), s))
+        case _ => EurexSnapshot(av.ts, date, Side[Bid](ttopv(av.bid), Vector()), Side[Ask](ttopv(av.ask), Vector()))
       }
     })
   }
