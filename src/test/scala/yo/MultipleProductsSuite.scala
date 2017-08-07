@@ -24,6 +24,8 @@ import org.scalacheck.Test.Parameters
 import org.scalatest.{Matchers, PropSpec}
 import yo.sparkSession.implicits._
 import yo.MultiSnapsFunctions._
+import yo.SnapsFunctions._
+
 import com.databricks.spark.avro._
 import com.google.cloud.hadoop.fs.gcs._
 import com.google.cloud.hadoop.util._
@@ -35,9 +37,9 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
   val MAX_DEV = 1000L
 
   lazy val dayGen: Gen[Long] = {
-    var prev_day = -1L
+    var prev_day = 0L
     for {
-      offset: Long <- Gen.choose(1L,10L)
+      offset: Long <- Gen.choose(0L,1L)
     } yield {
       prev_day += offset
       prev_day
@@ -88,6 +90,7 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
 
   property("snapshot generation") {
     val ts = Timestamp.valueOf(MY_EPOCH.toLocalDateTime)
+    var rec = ts.getTime * 1000000L + ts.getNanos
       forAll { (snap: Snapshot) =>
       snap.asks.quotes should have size 1
       snap.asks.trades shouldBe empty
@@ -97,18 +100,24 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
 
       snap.asks.quotes(0).tickPrice should be > snap.bids.quotes(0).tickPrice
 
-      snap.received should be > ts.getTime * 1000000L + ts.getNanos
+      snap.received should be > rec
+
+      rec = snap.received
     }
   }
 
   lazy val rsListGen : Gen[List[EurexSnapshot]] = listOf[EurexSnapshot](rsGen)
   implicit lazy val arbRsList: Arbitrary[List[EurexSnapshot]] = Arbitrary(rsListGen)
 
-//  property("snapshot generator") {
-//    forAll{ (es: List[EurexSnapshot]) =>
-//      es should not be empty
-//    }
-//  }
+  property("snapshot list generator") {
+    forAll{ (es: List[EurexSnapshot]) =>
+      def bef(tb: ((Long,Boolean),(Long,Boolean))) = {
+        (tb._2._1,(tb._2._1 > tb._1._1) && tb._1._2)
+      }
+      if (es.size > 0)
+        es.map(m => (m.received, true)).reduce(bef(_,_))._2 should equal (true)
+    }
+  }
 
   lazy val rsDSGen : Gen[Snaps] = {
     for {
@@ -117,7 +126,7 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
       val ds = rsList.toDS()
       rsList match {
         case Nil => ds
-        case _ => ds.repartition(rsList.groupBy(es => es.ssd).size, ds("ssd"))
+        case _ => ds.repartition(rsList.groupBy(es => es.ssd).size, ds("ssd")) //.sortWithinPartitions(ds("received"))
       }
     }
   }
@@ -126,6 +135,11 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
   property("Snaps partitions") {
     forAll {
       (s: Snaps) => {
+        if (s.count > 0) {
+          s.mapPartitions(m => List(m.foldLeft((0L, true))((x, y) => (y.received, y.received > x._1 && x._2))._2)
+            .toIterator).collect() should contain only (true)
+        }
+
         s.count() match {
           case 0 => s.rdd.getNumPartitions shouldBe 1
           case _ => s.rdd.getNumPartitions shouldBe (s.groupBy(s("ssd")).count().count())
@@ -133,9 +147,8 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
         // partitions need to obey ssd
         s.foreachPartition(ite => {
           val ssd = if (ite.hasNext) ite.next().ssd else 0
-          if (!ite.isEmpty && ite.forall(es => es.ssd == ssd)) {
-            throw new RuntimeException("yo")
-          }
+          if (!ite.isEmpty)
+            ite.forall(es => es.ssd == ssd) shouldBe true
         })
       }
     }
@@ -163,12 +176,13 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
     forAll {
       (ds1: Snaps, ds2: Snaps) => {
         val ms = createMultiSnaps(List(("FDAX", ds1),("FESX", ds2)))
-
-        ms.products should have size 2
+        val jo: Array[Int] = ms.map(s => s.products.size).collect
+        jo match {
+          case Array() => jo shouldBe empty
+          case _  => jo should contain only (2)
+        }
 
         val numDays = Math.max(1,ms.select("ssd").distinct().count())
-
-
         ms.rdd.getNumPartitions shouldBe (numDays)
 
         //ms.filter(m => m.received != m.latest().received).collect() shouldBe empty
@@ -176,7 +190,8 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
         def bef(tb: ((Long,Boolean),(Long,Boolean))) = {
           (tb._2._1,(tb._2._1 > tb._1._1) && tb._1._2)
         }
-        //ms.map(m => (m.received, true)).reduce(bef(_,_))._2 should equal (true)
+        if (ms.count() > 0)
+          ms.map(m => (m.received, true)).reduce(bef(_,_))._2 should equal (true)
       }
     }
   }
@@ -221,9 +236,9 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
           ms_filled.rdd.getNumPartitions shouldBe (ms.rdd.getNumPartitions)
           val prod_sizes = ms_filled.map(m => m.products.size).cache()
           prod_sizes.distinct().count() should equal(1)
-          prod_sizes.filter(f => f != ms_filled.products.size).collect shouldBe empty
+          //prod_sizes.filter(f => f != ms_filled.products.size).collect shouldBe empty
 
-          ms.isTradedProduct(ms.products.head._1)
+          //ms.isTradedProduct(ms.products.head._1)
         }
       }
     }

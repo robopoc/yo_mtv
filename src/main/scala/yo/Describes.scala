@@ -36,11 +36,11 @@ abstract class Snapshot {
   }
   def midPrice(): Option[Double] = for (x <- side(Ask()).qp(); y <- side(Bid()).qp()) yield (x+y)*0.5
 
-  def fill(other: Option[EurexSnapshot]): Option[EurexSnapshot]
+  def fill(other: Option[Snapshot]): Option[EurexSnapshot]
 }
 
 case class EurexSnapshot(received: Long, ssd: Int, bids: Side[Bid], asks: Side[Ask]) extends Snapshot {
-  override def fill(other: Option[EurexSnapshot]) = other match {
+  override def fill(other: Option[Snapshot]) = other match {
     case None => Some(this.copy())
     case Some(s) => Some(EurexSnapshot(s.received,
       s.ssd,
@@ -59,7 +59,7 @@ case class EurexSnapshot(received: Long, ssd: Int, bids: Side[Bid], asks: Side[A
 
 case class MultiSnapshot(received: Long, ssd: Int,
                          products: Vector[(String,Option[EurexSnapshot])]) extends Serializable {
-  def latest(): EurexSnapshot = products match {
+  def latest(): Snapshot = products match {
     case last +: nil => last._2.get
     case Vector() => products.reduce((z1,z2) => (z1._2,z2._2) match {
       case (_,None) => z1

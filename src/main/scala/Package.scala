@@ -7,8 +7,6 @@ import org.apache.spark.sql.{Dataset, SparkSession}
   */
 package object yo {
   type Snaps = Dataset[EurexSnapshot]
-
-  //type EurexSnaps = Snaps[EurexSnapshot]
   type MultiSnaps = Dataset[MultiSnapshot]
 
   val sparkSession = SparkSession.builder.appName("yo").master("local[*]").getOrCreate()

@@ -8,6 +8,7 @@ import java.time.{Instant, LocalDate, ZoneId}
 import com.databricks.spark.avro._
 import org.apache.spark.annotation.InterfaceStability
 import sparkSession.implicits._
+import MultiSnapsFunctions._
 /**
   * Created by robo on 28/7/17.
   */
@@ -16,16 +17,21 @@ class SnapsFunctions(private val ds: Snaps) extends Serializable {
 //  def toMultiSnaps(product: Prod): MultiSnaps = ds.count() match {
 //    case (0) => throw new InvalidParameterException("Won't create MultiSnaps from empty Snaps")
 //    case _ => ds.map(s => MultiSnapshot(s.received, Map((product, s))))
-//  }
-  var product: Option[(String, ZoneId)] = None
+//
+
   def rep(): Unit = {
     ds.repartition(ds("ssd"))
+  }
+
+  def toMultiSnaps(product: String): MultiSnaps = {
+    val ms: MultiSnaps = ds.map(s => MultiSnapshot(s.received, s.ssd, Vector((product, Some(s)))))
+    ms
   }
 }
 
 //
 object SnapsFunctions {
-  implicit def addFunctions(ds: Snaps) = new SnapsFunctions(ds)
+  implicit def adddFunctions(ds: Snaps) = new SnapsFunctions(ds)
 
   def fromAvro(product: (String,Map[Date,String]), days: Iterable[Date]): Snaps = {
     val ds = sparkSession.read.avro("/Users/robo/data/avro_test.avro").as[Avros]
