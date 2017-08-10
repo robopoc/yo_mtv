@@ -25,10 +25,11 @@ import org.scalatest.{Matchers, PropSpec}
 import yo.sparkSession.implicits._
 import yo.MultiSnapsFunctions._
 import yo.SnapsFunctions._
-
 import com.databricks.spark.avro._
 import com.google.cloud.hadoop.fs.gcs._
 import com.google.cloud.hadoop.util._
+import org.apache.spark.{HashPartitioner, RangePartitioner}
+import org.apache.spark.sql.catalyst.plans.physical.RangePartitioning
 
 
 final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matchers {
@@ -126,30 +127,52 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
       val ds = rsList.toDS()
       rsList match {
         case Nil => ds
-        case _ => ds.repartition(rsList.groupBy(es => es.ssd).size, ds("ssd")) //.sortWithinPartitions(ds("received"))
+        case _ => {
+          val dists: Map[Int, Int] = ds.dropDuplicates("ssd").collect().map(es => es.ssd).zipWithIndex.toMap
+          ds.rdd.map(r => (dists(r.ssd), r)).partitionBy(new HashPartitioner(dists.size)).toDS().map(r => r._2)
+        }
       }
     }
   }
   implicit lazy val arbDS: Arbitrary[Snaps] = Arbitrary(rsDSGen)
 
+  lazy val rsDSGens : Gen[Dataset[(Int,EurexSnapshot)]] = {
+    for {
+      rsList : List[EurexSnapshot] <- rsListGen
+    } yield {
+      val ds = rsList.toDS()
+      rsList match {
+        case Nil => ds.map(r=>(r.ssd,r))
+        case _ => {
+          val dists: Map[Int, Int] = ds.dropDuplicates("ssd").collect().map(es => es.ssd).zipWithIndex.toMap
+          ds.rdd.map(r => (dists(r.ssd), r)).partitionBy(new HashPartitioner(dists.size)).toDS()
+        }
+      }
+    }
+  }
+  implicit lazy val arbDSs: Arbitrary[(Dataset[(Int,EurexSnapshot)])] = Arbitrary(rsDSGens)
+
   property("Snaps partitions") {
     forAll {
       (s: Snaps) => {
         if (s.count > 0) {
-          s.mapPartitions(m => List(m.foldLeft((0L, true))((x, y) => (y.received, y.received > x._1 && x._2))._2)
+          s.mapPartitions(m => List(m.foldLeft((0L, true))((x, y) => (y.received, (y.received > x._1) && x._2))._2)
             .toIterator).collect() should contain only (true)
         }
+
+
+        //s.rdd.repartition()
+
+        //s.repartition()
+
+       // s.groupByKey(s => s.ssd).flatMapGroups(n => )
 
         s.count() match {
           case 0 => s.rdd.getNumPartitions shouldBe 1
           case _ => s.rdd.getNumPartitions shouldBe (s.groupBy(s("ssd")).count().count())
         }
         // partitions need to obey ssd
-        s.foreachPartition(ite => {
-          val ssd = if (ite.hasNext) ite.next().ssd else 0
-          if (!ite.isEmpty)
-            ite.forall(es => es.ssd == ssd) shouldBe true
-        })
+        all (s.mapPartitions(ite => List(ite.map(es => es.ssd).toList.distinct.size).iterator).collect()) should be < 2
       }
     }
   }
@@ -179,30 +202,30 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
         val jo: Array[Int] = ms.map(s => s.products.size).collect
         jo match {
           case Array() => jo shouldBe empty
-          case _  => jo should contain only (2)
+          case _  => all (jo) shouldBe jo(0)
         }
 
         val numDays = Math.max(1,ms.select("ssd").distinct().count())
         ms.rdd.getNumPartitions shouldBe (numDays)
 
-        //ms.filter(m => m.received != m.latest().received).collect() shouldBe empty
+        ms.filter(m => m.received != m.latest().get.received).collect() shouldBe empty
 
-        def bef(tb: ((Long,Boolean),(Long,Boolean))) = {
-          (tb._2._1,(tb._2._1 > tb._1._1) && tb._1._2)
-        }
         if (ms.count() > 0)
-          ms.map(m => (m.received, true)).reduce(bef(_,_))._2 should equal (true)
+          ms.mapPartitions(it => List(it.foldLeft((0L,true))((a,b) => (b.received,b.received > a._1 && a._2))._2).iterator).collect() should contain only (true)
       }
     }
   }
 
   property("test avro file conversion") {
     val ds = sparkSession.read.avro("/Users/robo/data/avro_test.avro").as[Avros]
+    val df = sparkSession.read.avro("/Users/robo/data/avro_out_with_raw.avro").select("ose_raw.seconds")
+    val dff = sparkSession.read.avro("/Users/robo/data")
+
     println(ds.rdd.getNumPartitions)
 
     //ds.map(av => LocalDateTime.ofEpochSecond(av.ts/1000000000, (av.ts % 1000000000).toInt, ZoneOffset.of("Z")))
 
-    ds.write.partitionBy("ts").avro("/Users/robo/data/part/")
+     // ds.write.partitionBy("ts").avro("/Users/robo/data/part/")
     println(ds.rdd.getNumPartitions)
 
 

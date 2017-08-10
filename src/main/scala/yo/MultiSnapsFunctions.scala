@@ -60,7 +60,6 @@ class MultiSnapsFunctions(private val ds: MultiSnaps) extends Serializable {
 //    }
 //    else throw new InvalidParameterException(product + " is not contained in the MultiSnaps")
 //  }
-
 }
 
 object MultiSnapsFunctions {
@@ -92,11 +91,11 @@ object MultiSnapsFunctions {
       case (m1,m2) => MultiSnapshot(m._1.received, m._1.ssd,
         m._1.products ++ m._2.products)
     })
-    mm.repartition(Math.max(1,mm.select("ssd").distinct().count().toInt),mm("ssd"))
+    mm.repartition(Math.max(1,mm.select("ssd").distinct().count().toInt),mm("ssd")).sortWithinPartitions($"received")
   }
 
   def createMultiSnaps(products: List[(String, Snaps)]) = {
-    products.map(p => p._2.toMultiSnaps(p._1)).fold(empty())(combine).sort()
+    products.map(p => p._2.toMultiSnaps(p._1)).fold(empty())(combine)
   }
 //    case null => empty
 //    case Nil => empty

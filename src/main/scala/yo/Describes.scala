@@ -59,14 +59,13 @@ case class EurexSnapshot(received: Long, ssd: Int, bids: Side[Bid], asks: Side[A
 
 case class MultiSnapshot(received: Long, ssd: Int,
                          products: Vector[(String,Option[EurexSnapshot])]) extends Serializable {
-  def latest(): Snapshot = products match {
-    case last +: nil => last._2.get
-    case Vector() => products.reduce((z1,z2) => (z1._2,z2._2) match {
+  def latest(): Option[Snapshot] = products.size match {
+    case l if l > 0  => products.foldLeft[Option[EurexSnapshot]](None)((z1,z2) => (z1,z2._2) match {
       case (_,None) => z1
-      case (None,Some(s)) => z2
-      case (Some(s1),Some(s2)) => if (s1.received > s2.received) z1 else z2
-    })._2.get
-    case _ => throw new NoSuchElementException("at least one event per row " + received)
+      case (None,Some(s)) => z2._2
+      case (Some(s1),Some(s2)) => if (s1.received > s2.received) z1 else z2._2
+    })
+    case 0 => throw new NoSuchElementException("at least one event per row " + received)
   }
 
   def fill(other: MultiSnapshot) = {
@@ -83,6 +82,9 @@ case class MultiSnapshot(received: Long, ssd: Int,
 
 case class PVS(price: Double, volume: Double, Source: String)
 case class Avros(ts: Long, feedcode: String, bid: Vector[(Long,Double)], ask: Vector[(Long,Double)], tick: PVS)
+case class Raw(seconds: Int)
+case class AvrosWithRaw(ts: Long, feedcode: String, bid: Vector[(Long,Double)], ask: Vector[(Long,Double)], tick: PVS, ose_raw: Raw)
+
 
 //object Encooders {
 //  implicit def dd: Encoder[Prod] = Encoders.kryo[Prod]
