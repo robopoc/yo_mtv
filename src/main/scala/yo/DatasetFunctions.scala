@@ -22,4 +22,5 @@ class DatasetFunctions[T](private val ds: Dataset[T]) extends Serializable {
 
 object DatasetFunctions {
   implicit def addFunctions(ds: MultiSnaps) = new DatasetFunctions(ds)
+
 }

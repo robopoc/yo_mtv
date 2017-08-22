@@ -107,7 +107,7 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
     }
   }
 
-  lazy val rsListGen : Gen[List[EurexSnapshot]] = listOf[EurexSnapshot](rsGen)
+  lazy val rsListGen : Gen[List[EurexSnapshot]] = listOfN[EurexSnapshot](100000,rsGen)
   implicit lazy val arbRsList: Arbitrary[List[EurexSnapshot]] = Arbitrary(rsListGen)
 
   property("snapshot list generator") {
@@ -241,7 +241,7 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
 
   lazy val msGen : Gen[MultiSnaps] = {
     for {
-      snapsList : List[Snaps] <- Gen.listOf[Snaps](rsDSGen)
+      snapsList : List[Snaps] <- Gen.listOfN[Snaps](3,rsDSGen)
     } yield createMultiSnaps(snapsList.zipWithIndex.map(s => ("p" + s._2, s._1)))
   }
   implicit lazy val arbMS: Arbitrary[MultiSnaps] = Arbitrary(msGen)
@@ -249,6 +249,8 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
   property("test multisnaps fill") {
     forAll {
       (ms: MultiSnaps) => {
+        ms.write.parquet("/Users/robo/data/e")
+        throw new RuntimeException("fuck you")
         if (ms == null || ms.count() == 0) {
           0 shouldBe (0)
         }
@@ -266,6 +268,7 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
       }
     }
   }
+
 
 
 //  property("snaps generator") {
