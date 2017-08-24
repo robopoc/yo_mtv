@@ -3,15 +3,10 @@
   */
 package yo
 
-import java.security.InvalidParameterException
-import java.sql.Timestamp
-import java.time.ZoneId
-
-import org.apache.spark.annotation.InterfaceStability
-import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.{Dataset, Encoder, Encoders}
 import sparkSession.implicits._
 import SnapsFunctions._
+import org.apache.spark.HashPartitioner
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -48,9 +43,38 @@ class MultiSnapsFunctions(private val ds: MultiSnaps) extends Serializable {
 
   def fill(): MultiSnaps = {
     def ff(prods: Iterable[String])(ii: Iterator[MultiSnapshot]): Iterator[MultiSnapshot] = {
-      ii.scanLeft[MultiSnapshot](MultiSnapshot(0L, 0, MultiSnapsFunctions.generate_snapshot_vector(prods)))(_ fill _).filter(r => r.received != 0L)
+      ii.scanLeft[MultiSnapshot](MultiSnapshot(0L, 0, MultiSnapsFunctions.generate_snapshot_vector(prods)))(_ fill _).
+        filter(r => r.received != 0L)
     }
-    ds.mapPartitions(ff(ds.take(1).head.products.map(p => p._1)))
+    val prods = ds.take(1).head.products.map(p => p._1)
+    ds.mapPartitions(ff(prods))
+  }
+
+  def dayPartition(): MultiSnaps = {
+    val dists: Map[Int, Int] = ds.dropDuplicates("ssd").collect().map(es => es.ssd).zipWithIndex.toMap
+    ds.rdd.map(r => (dists(r.ssd), r)).partitionBy(new HashPartitioner(dists.size)).map(r => r._2)
+      .toDS().sortWithinPartitions("received")
+  }
+
+  def validPartition(): Boolean = {
+    def valid(it: Iterator[MultiSnapshot]): Iterator[(Boolean,List[Int])] = {
+      val il = it.toList
+      val isSorted = il.foldLeft((0L,true))((b,ms) => (ms.received,b._1 <= ms.received))._2
+      val days = il.map(ms => ms.ssd).toList.distinct
+      List((isSorted,days)).iterator
+    }
+
+    val li = ds.mapPartitions(valid).collect
+    var ss = Set[Int]()
+    li.forall(b => b._1) &&
+    li.forall(b => b._2.size == 1) &&
+    li.forall(b => {
+      if (ss.intersect(b._2.toSet).isEmpty) {
+        ss = ss ++ b._2
+        true
+      }
+      else false
+    })
   }
 
 //  def isTradedProduct(product: String): Unit = {
@@ -72,7 +96,7 @@ object MultiSnapsFunctions {
     case _ => (products.head, None) +: generate_snapshot_vector(products.tail)
   }
 
-  def combine(multiSnaps1: MultiSnaps, multiSnaps2: MultiSnaps): MultiSnaps = {
+  def combine(repartition: Boolean)(multiSnaps1: MultiSnaps, multiSnaps2: MultiSnaps): MultiSnaps = {
     val merged: Dataset[(MultiSnapshot, MultiSnapshot)] = multiSnaps1.joinWith(multiSnaps2,
       multiSnaps1("received") === multiSnaps2("received"), "outer")
     val p1 = multiSnaps1.count() match {
@@ -91,11 +115,14 @@ object MultiSnapsFunctions {
       case (m1,m2) => MultiSnapshot(m._1.received, m._1.ssd,
         m._1.products ++ m._2.products)
     })
-    mm.repartition(Math.max(1,mm.select("ssd").distinct().count().toInt),mm("ssd")).sortWithinPartitions($"received")
+    if (repartition)
+      mm.repartition(Math.max(1,mm.select("ssd").distinct().count().toInt),mm("ssd")).sortWithinPartitions($"received")
+    else
+      mm
   }
 
   def createMultiSnaps(products: List[(String, Snaps)]) = {
-    products.map(p => p._2.toMultiSnaps(p._1)).fold(empty())(combine)
+    products.map(p => p._2.toMultiSnaps(p._1)).fold(empty())(combine(false)).dayPartition()
   }
 //    case null => empty
 //    case Nil => empty

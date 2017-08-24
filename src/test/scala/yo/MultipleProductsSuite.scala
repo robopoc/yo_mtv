@@ -107,7 +107,7 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
     }
   }
 
-  lazy val rsListGen : Gen[List[EurexSnapshot]] = listOfN[EurexSnapshot](100000,rsGen)
+  lazy val rsListGen : Gen[List[EurexSnapshot]] = listOfN[EurexSnapshot](100,rsGen)
   implicit lazy val arbRsList: Arbitrary[List[EurexSnapshot]] = Arbitrary(rsListGen)
 
   property("snapshot list generator") {
@@ -249,8 +249,8 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
   property("test multisnaps fill") {
     forAll {
       (ms: MultiSnaps) => {
-        ms.write.parquet("/Users/robo/data/e")
-        throw new RuntimeException("fuck you")
+        //ms.write.parquet("/Users/robo/data/e")
+        //throw new RuntimeException("fuck you")
         if (ms == null || ms.count() == 0) {
           0 shouldBe (0)
         }
@@ -261,10 +261,16 @@ final class MultipleProductsSuite extends PropSpec with PropertyChecks with Matc
           ms_filled.rdd.getNumPartitions shouldBe (ms.rdd.getNumPartitions)
           val prod_sizes = ms_filled.map(m => m.products.size).cache()
           prod_sizes.distinct().count() should equal(1)
-          //prod_sizes.filter(f => f != ms_filled.products.size).collect shouldBe empty
 
-          //ms.isTradedProduct(ms.products.head._1)
         }
+      }
+    }
+  }
+
+  property("test multisnaps partitions") {
+    forAll {
+      (ms: MultiSnaps) => {
+        ms.validPartition() shouldBe true
       }
     }
   }

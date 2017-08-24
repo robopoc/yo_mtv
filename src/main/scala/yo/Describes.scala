@@ -76,7 +76,7 @@ case class MultiSnapshot(received: Long, ssd: Int,
         case Some(es) => es.fill(s._1._2)
       }
     } yield (s._1._1,ss)
-    MultiSnapshot(received, ssd, sss)
+    MultiSnapshot(other.received, other.ssd, sss)
   }
 }
 

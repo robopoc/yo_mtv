@@ -8,7 +8,6 @@ import org.apache.spark.ml.param.shared.{HasInputCols, HasOutputCol}
 import org.apache.spark.ml.util.{DefaultParamsWritable, Identifiable, Instrumentation}
 import org.apache.spark.ml.linalg.Vector
 import org.apache.spark.ml.tuning.{CrossValidator, CrossValidatorModel}
-import org.apache.spark.mllib.util.MLUtils
 import org.apache.spark.rdd.{PartitionPruningRDD, RDD}
 import org.apache.spark.sql.{DataFrame, Dataset}
 import scala.reflect.ClassTag
