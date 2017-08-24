@@ -3,13 +3,10 @@
   */
 package yo
 
-import org.apache.spark.sql.{Dataset, Encoder, Encoders}
+import org.apache.spark.sql.Dataset
 import sparkSession.implicits._
 import SnapsFunctions._
 import org.apache.spark.HashPartitioner
-
-import scala.collection.mutable
-import scala.collection.mutable.ListBuffer
 
 class MultiSnapsFunctions(private val ds: MultiSnaps) extends Serializable {
 

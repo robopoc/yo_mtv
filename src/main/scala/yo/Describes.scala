@@ -3,10 +3,6 @@
   */
 package yo
 
-import java.sql.Timestamp
-
-import org.apache.spark.sql.{Encoder, Encoders}
-
 trait Prod {
   def name: String
 }

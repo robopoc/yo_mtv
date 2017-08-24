@@ -1,8 +1,7 @@
 package yo
 
 import org.apache.spark.annotation.InterfaceStability
-import org.apache.spark.sql.{Dataset, Encoder}
-import sparkSession.implicits._
+import org.apache.spark.sql.Dataset
 
 /**
   * Created by robo on 28/7/17.
