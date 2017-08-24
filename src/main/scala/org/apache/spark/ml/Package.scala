@@ -1,3 +1,5 @@
+package org.apache.spark.ml
+
 import java.time.{ZoneId, ZonedDateTime}
 
 import org.apache.spark.sql.{Dataset, SparkSession}
@@ -13,6 +15,6 @@ package object yo {
   case class Tov(siz: Int, tiz: Int)
 
 
-  val sparkSession = SparkSession.builder.appName("yo").master("local[*]").getOrCreate()
+  val sparkSession = SparkSession.builder.appName("org/apache/spark/ml/yo").master("local[*]").getOrCreate()
   val MY_EPOCH = ZonedDateTime.of(2017,7,1,0,0,0,100, ZoneId.systemDefault())
 }

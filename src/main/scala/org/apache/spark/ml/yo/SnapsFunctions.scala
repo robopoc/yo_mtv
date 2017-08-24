@@ -1,4 +1,4 @@
-package yo
+package org.apache.spark.ml.yo
 
 import java.security.InvalidParameterException
 import java.sql.{Date, Timestamp}

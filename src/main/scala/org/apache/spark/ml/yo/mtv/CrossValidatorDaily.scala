@@ -3,10 +3,7 @@ package org.apache.spark.ml.yo.mtv
 import com.github.fommil.netlib.F2jBLAS
 import org.apache.spark.annotation.Since
 import org.apache.spark.ml.{Model, PredictionModel, Predictor}
-import org.apache.spark.ml.param._
-import org.apache.spark.ml.param.shared.{HasInputCols, HasOutputCol}
 import org.apache.spark.ml.util.{DefaultParamsWritable, Identifiable, Instrumentation}
-import org.apache.spark.ml.linalg.Vector
 import org.apache.spark.ml.tuning.{CrossValidator, CrossValidatorModel}
 import org.apache.spark.rdd.{PartitionPruningRDD, RDD}
 import org.apache.spark.sql.{DataFrame, Dataset}
@@ -17,6 +14,8 @@ import scala.reflect.ClassTag
   */
 final class CrossValidatorDaily(override val uid: String) extends CrossValidator {
   private val f2jBLAS = new F2jBLAS
+
+  def this() = this(Identifiable.randomUID("cvd"))
 
   def split[T: ClassTag](data: RDD[T], numFolds: Int, seed: Long): Array[(RDD[T],RDD[T])] = {
     val numPart = data.getNumPartitions

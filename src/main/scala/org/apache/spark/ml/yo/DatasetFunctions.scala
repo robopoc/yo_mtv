@@ -1,4 +1,4 @@
-package yo
+package org.apache.spark.ml.yo
 
 import org.apache.spark.annotation.InterfaceStability
 import org.apache.spark.sql.Dataset

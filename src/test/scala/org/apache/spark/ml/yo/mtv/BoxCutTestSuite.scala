@@ -21,15 +21,15 @@ import org.scalacheck.Arbitrary._
 import org.scalacheck.Prop._
 import org.scalacheck.Test.Parameters
 import org.scalatest.{Matchers, PropSpec}
-import yo.sparkSession.implicits._
-import yo.MultiSnapsFunctions._
-import yo.SnapsFunctions._
+import org.apache.spark.ml.yo.sparkSession.implicits._
+import org.apache.spark.ml.yo.MultiSnapsFunctions._
+import org.apache.spark.ml.yo.SnapsFunctions._
 import com.databricks.spark.avro._
 import com.google.cloud.hadoop.fs.gcs._
 import com.google.cloud.hadoop.util._
 import org.apache.spark.{HashPartitioner, RangePartitioner}
 import org.apache.spark.sql.catalyst.plans.physical.RangePartitioning
-import yo.{MultiSnaps, MultiSnapshot, Tov, Yo}
+import org.apache.spark.ml.yo.{MultiSnaps, MultiSnapshot, Tov, Yo}
 
 /**
   * Created by robo on 17/7/17.

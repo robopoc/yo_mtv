@@ -1,7 +1,7 @@
 /**
   * Created by robo on 17/7/17.
   */
-package yo
+package org.apache.spark.ml.yo
 
 import org.apache.spark.sql.Dataset
 import sparkSession.implicits._
